@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+
+import hashlib
+import base64
+import time
+import struct
+import hmac
+import getpass
+
+def generate_totp(totp_seed, digits=6, time_step=30, t0=0, digest_method=hashlib.sha1):
+    """
+    Generates a TOTP code.
+    :param secret: The TOTP seed as a base32 encoded string (without spaces).
+    :param digits: The number of digits in the OTP (default is 6).
+    :param time_step: The time step in seconds (default is 30).
+    :param t0: The Unix time to start counting time steps (default is 0).
+    :param digest_method: The cryptographic hash function to use (default is hashlib.sha1).
+    :return: The TOTP code as a string.
+    """
+    try:
+        # Decode the base32 secret (pads if necessary)
+        key = base64.b32decode(totp_seed.upper() + '=' * ((8 -
+            len(totp_seed) % 8) % 8))
+    except Exception as e:
+        raise ValueError("Invalid base32 encoded secret")
+    # Calculate the number of time steps since t0
+    current_time = int(time.time())
+    counter = (current_time - t0) // time_step
+    # Convert counter to byte array (big-endian, 8-byte integer)
+    counter_bytes = struct.pack('>Q', counter)
+    # Compute HMAC using the chosen digest method
+    hmac_hash = hmac.new(key, counter_bytes, digest_method).digest()
+    # Dynamic truncation: get offset from the last nibble of hmac_hash
+    offset = hmac_hash[-1] & 0x0F
+    # Take 4 bytes from offset
+    selected_bytes = hmac_hash[offset:offset + 4]
+    # Convert to a 31-bit integer
+    code_int = struct.unpack('>I', selected_bytes)[0] & 0x7FFFFFFF
+    # Compute the OTP value
+    otp = code_int % (10 ** digits)
+    # Pad with zeros if necessary
+    return str(otp).zfill(digits)
+
+
+secret = getpass.getpass("TOTP secret: ")
+totp = generate_totp(secret)
+print(totp)
